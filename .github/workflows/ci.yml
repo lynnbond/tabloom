@@ -1,0 +1,49 @@
+name: Native build and tests
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Linux native dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libfontconfig1-dev libfreetype6-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxi-dev libxcursor-dev libxrandr-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libegl1-mesa-dev libgl1-mesa-dev libssl-dev libgl1-mesa-dri xvfb xauth xclip fonts-noto-cjk fonts-noto-color-emoji
+      - run: cargo fmt --all -- --check
+      - run: cargo check --all-targets --locked
+      - run: cargo test --locked
+      - run: cargo clippy --all-targets --all-features --locked -- -D warnings
+      - run: cargo build --release --locked
+      - name: Linux X11 native recovery, files, clipboard, and large text
+        if: runner.os == 'Linux'
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+          XDG_RUNTIME_DIR: /tmp/tabloom-runtime
+        run: |
+          mkdir -m 700 -p "$XDG_RUNTIME_DIR"
+          cargo build --locked --bins --examples
+          xvfb-run -a target/debug/examples/document_smoke target/continuous-document.png
+          for theme in A B C D; do xvfb-run -a target/debug/examples/document_smoke target/themes/$theme.png "$theme"; done
+          xvfb-run -a python3 scripts/verify-linux-main.py
+          xvfb-run -a target/debug/examples/directory_smoke target/directory-smoke.png
+          xvfb-run -a python3 scripts/verify-native-persistence.py
+          xvfb-run -a python3 scripts/verify-native-files.py
+          xvfb-run -a python3 scripts/verify-linux-clipboard.py
+          xvfb-run -a target/debug/examples/large_text_smoke target/large-rust.png rust

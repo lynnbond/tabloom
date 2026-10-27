@@ -1,0 +1,36 @@
+{
+  "platform": "macOS-26.6.2-arm64-arm-64bit",
+  "architecture": "arm64",
+  "memory_bytes": 17179869184,
+  "profile": "release",
+  "native_ui_note": "app.show CPU time per pass only; excludes full frame paint/GPU; synthetic egui input, native system font provider and Glow renderer",
+  "headless_note": "kittest timings include settling passes, default bundled fonts",
+  "native_plain_ui_ms": [
+    210.316833,
+    5.6861250000000005,
+    2.780958,
+    5.319375,
+    2.731916,
+    5.382750000000001,
+    0.8605,
+    3.821125,
+    3.816417,
+    1.892959,
+    1.795583,
+    1.931084
+  ],
+  "native_rust_ui_ms": [
+    19.177833,
+    5.591459,
+    2.6611249999999997,
+    5.353292,
+    2.8060419999999997,
+    5.246458,
+    0.845042,
+    3.699291,
+    3.6747910000000004,
+    1.823584,
+    1.821708,
+    1.9228750000000001
+  ]
+}

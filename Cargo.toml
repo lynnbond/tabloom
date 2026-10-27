@@ -1,0 +1,41 @@
+[package]
+name = "tabloom"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+description = "A native multi-workspace, multi-region plain text editor"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+egui_commonmark = { version = "=0.26.0", default-features = false }
+similar = "=3.2.0"
+rfd = "=0.17.2"
+sha2 = "=0.11.1"
+tempfile = "=3.27.0"
+arboard = { version = "=3.7.0", default-features = false, features = ["wayland-data-control"] }
+regex = "=1.13.1"
+directories = "=6.0.0"
+serde_json = "=1.0.154"
+thiserror = "=2.0.21"
+eframe = { version = "=0.37.0", default-features = false, features = ["accesskit", "clipboard", "default_fonts", "system_fonts", "glow", "wayland", "x11"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+syntect = { version = "=5.3.0", default-features = false, features = ["default-onig"] }
+two-face = { version = "=0.5.2", default-features = false, features = ["syntect-onig"] }
+uuid = { version = "=1.28.0", features = ["v4", "serde"] }
+
+[dev-dependencies]
+egui_kittest = "=0.37.0"
+image = { version = "=0.25.10", default-features = false, features = ["png"] }
+
+[profile.release]
+lto = "thin"
+strip = true
+
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+# AppKit probes for picker cancellation and native menus.
+objc2 = "=0.6.5"
+objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["NSApplication", "NSWindow", "NSMenu", "NSMenuItem", "NSEvent", "NSGraphicsContext"] }
+dispatch2 = "=0.3.1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+muda = { version = "=0.21.2", default-features = false }

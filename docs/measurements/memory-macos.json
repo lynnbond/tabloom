@@ -1,0 +1,94 @@
+{
+  "platform": "macOS ARM64, Rust 1.99.1, release, Glow, 1100x760 logical points",
+  "method": "separate disposable native processes; 3 vmmap + ps samples each; no long-run statistical claim",
+  "runs": {
+    "before": {
+      "binary": "/tmp/tabloom-memory-before",
+      "syntax": "plain",
+      "window_points": [
+        1100,
+        760
+      ],
+      "samples": [
+        {
+          "physical_footprint_mib": 174.7,
+          "rss_mib": 101.08
+        },
+        {
+          "physical_footprint_mib": 170.3,
+          "rss_mib": 101.14
+        },
+        {
+          "physical_footprint_mib": 170.3,
+          "rss_mib": 101.06
+        }
+      ]
+    },
+    "before-rust": {
+      "binary": "/tmp/tabloom-memory-before",
+      "syntax": "rust",
+      "window_points": [
+        1100,
+        760
+      ],
+      "samples": [
+        {
+          "physical_footprint_mib": 175.2,
+          "rss_mib": 118.02
+        },
+        {
+          "physical_footprint_mib": 177.6,
+          "rss_mib": 118.33
+        },
+        {
+          "physical_footprint_mib": 170.9,
+          "rss_mib": 118.39
+        }
+      ]
+    },
+    "after": {
+      "binary": "target/release/examples/memory_probe",
+      "syntax": "plain",
+      "window_points": [
+        1100,
+        760
+      ],
+      "samples": [
+        {
+          "physical_footprint_mib": 173.2,
+          "rss_mib": 102.61
+        },
+        {
+          "physical_footprint_mib": 168.7,
+          "rss_mib": 101.05
+        },
+        {
+          "physical_footprint_mib": 168.7,
+          "rss_mib": 100.61
+        }
+      ]
+    },
+    "after-rust": {
+      "binary": "target/release/examples/memory_probe",
+      "syntax": "rust",
+      "window_points": [
+        1100,
+        760
+      ],
+      "samples": [
+        {
+          "physical_footprint_mib": 175.1,
+          "rss_mib": 115.42
+        },
+        {
+          "physical_footprint_mib": 175.2,
+          "rss_mib": 115.52
+        },
+        {
+          "physical_footprint_mib": 170.7,
+          "rss_mib": 115.19
+        }
+      ]
+    }
+  }
+}

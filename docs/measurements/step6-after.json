@@ -1,0 +1,18 @@
+{
+  "bytes_per_large_region": 1048617,
+  "database_load_ms": 0.759916,
+  "database_save_ms": 12.667625,
+  "headless_edit_runs_ms": [
+    67.989958,
+    63.594208,
+    63.50083300000001
+  ],
+  "headless_initial_ui_ms": 71.80012500000001,
+  "headless_switch_run_ms": 119.264042,
+  "literal_search_ms": 1.1096249999999999,
+  "note": "UI timings include kittest settling passes, no native paint or system fonts; run --release",
+  "plain_layout_job_ms": 0.14825,
+  "regions_per_workspace": 3,
+  "rust_layout_job_ms": 0.162375,
+  "workspaces": 3
+}

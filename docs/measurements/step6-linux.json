@@ -1,0 +1,28 @@
+{
+  "platform": "aarch64-unknown-linux-gnu; Debian bookworm Docker VM; Xvfb/Mesa software X11",
+  "rust": "1.99.1",
+  "profile": "dev/test debug=0; one build job; bundled LLD",
+  "tests_passed": 81,
+  "check_all_targets": true,
+  "clippy_strict": true,
+  "native_persistence": true,
+  "native_files": true,
+  "native_x11_clipboard": true,
+  "native_three_1mib_workspaces": true,
+  "native_ui_build_ms": [
+    95.930583,
+    99.648042,
+    35.198834,
+    97.89812500000001,
+    35.528959,
+    97.9435,
+    18.364209,
+    56.159,
+    56.026041,
+    40.140750000000004,
+    39.738375,
+    40.218958
+  ],
+  "note": "unoptimized UI CPU time; excludes paint; not comparable to macOS release timings",
+  "production_main_startup": true
+}
