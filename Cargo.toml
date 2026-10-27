@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.95"
 description = "A native multi-workspace, multi-region plain text editor"
-license = "MIT OR Apache-2.0"
+license = "MIT"
+repository = "https://github.com/lynnbond/tabloom"
 
 [dependencies]
 egui_commonmark = { version = "=0.26.0", default-features = false }

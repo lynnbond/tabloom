@@ -319,3 +319,7 @@ macOS 原生菜单集成验证（使用临时工作区，不访问正式文档�
 ```
 
 该探针通过 AppKit 实际菜单项和 `performKeyEquivalent` 检查新建、关闭/重新打开、全选、撤销重做、查找替换、主题、保存、保存失败时阻止退出以及正常退出后的磁盘恢复。它不是实体鼠标或键盘的人工验收。
+
+## 许可证
+
+本项目以 [MIT 许可证](LICENSE) 开源，Copyright (c) 2026 liyan。第三方依赖与语法包的许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
