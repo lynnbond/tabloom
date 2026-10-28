@@ -155,3 +155,5 @@ pub const COPY_MARKDOWN: &str = "复制 Markdown 源码";
 pub const MARKDOWN_LARGE: &str = "Markdown 超过 256 KiB，显示源码以保持编辑流畅。";
 pub const DOCUMENT_SOURCE: &str = "编辑整篇源码";
 pub const DOCUMENT_PREVIEW: &str = "恢复 Markdown 预览";
+
+pub const COPY_SELECTED_MARKDOWN: &str = "复制选中文字";

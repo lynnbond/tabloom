@@ -1,5 +1,8 @@
 use eframe::egui::{self, Key, Modifiers};
-use egui_kittest::{Harness, kittest::Queryable};
+use egui_kittest::{
+    Harness,
+    kittest::{NodeT, Queryable},
+};
 use tabloom::{
     app::TabloomApp,
     editor::commands::{self, TextCommand},
@@ -33,6 +36,12 @@ fn preview_is_default_and_double_click_edits_source_then_blur_renders() {
     let mut h = harness();
     let before = h.state().document.active().unwrap().text();
     assert!(h.query_by_label(text::MARKDOWN_PREVIEW).is_some());
+    assert_eq!(
+        h.get_by_label(text::MARKDOWN_PREVIEW)
+            .accesskit_node()
+            .role(),
+        egui::Role::GenericContainer
+    );
     assert!(h.query_by_label(text::MARKDOWN_SOURCE).is_none());
     edit(&mut h);
     h.get_by_label(text::MARKDOWN_SOURCE).click();
@@ -232,4 +241,185 @@ fn entirely_empty_markdown_accepts_continuous_typing_without_becoming_preview() 
         "# first second"
     );
     assert!(h.query_by_label(text::MARKDOWN_SOURCE).is_some());
+}
+
+fn select_preview_heading(h: &mut Harness<'_, TabloomApp>) -> String {
+    let rect = h.get_by_label("标题 😀").rect();
+    let start = rect.left_center() + egui::vec2(0.5, 0.);
+    let end = rect.right_center() - egui::vec2(0.5, 0.);
+    h.event(egui::Event::PointerMoved(start));
+    h.event(egui::Event::PointerButton {
+        pos: start,
+        button: egui::PointerButton::Primary,
+        pressed: true,
+        modifiers: Modifiers::NONE,
+    });
+    h.event(egui::Event::PointerMoved(end));
+    h.event(egui::Event::PointerButton {
+        pos: end,
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers: Modifiers::NONE,
+    });
+    h.run();
+    markdown::preview_selection(&h.ctx)
+}
+#[test]
+fn rendered_heading_can_be_drag_selected_and_copied_by_keyboard_and_menu() {
+    use std::sync::{Arc, Mutex};
+    use tabloom::editor::clipboard::{PlainTextClipboard, TextClipboard};
+    struct Capture(Arc<Mutex<String>>);
+    impl TextClipboard for Capture {
+        fn get_text(&self) -> Result<String, String> {
+            Ok(self.0.lock().unwrap().clone())
+        }
+        fn set_text(&self, value: &str) -> Result<(), String> {
+            *self.0.lock().unwrap() = value.into();
+            Ok(())
+        }
+    }
+    let mut h = harness();
+    let original = h.state().document.active().unwrap().text();
+    let copied = Arc::new(Mutex::new(String::new()));
+    h.ctx
+        .add_plugin(PlainTextClipboard::new(Capture(copied.clone())));
+    let selected = select_preview_heading(&mut h);
+    assert_eq!(selected, "标题 😀");
+    h.key_press_modifiers(Modifiers::COMMAND, Key::C);
+    h.run();
+    assert_eq!(*copied.lock().unwrap(), selected);
+    *copied.lock().unwrap() = String::new();
+    h.get_by_label(text::EDIT).click();
+    h.run();
+    let label = format!(
+        "{} {}",
+        text::COPY,
+        tabloom::ui::shortcuts::command_label(egui::os::OperatingSystem::from_target_os(), "C")
+    );
+    h.get_by_label(&label).click();
+    h.run();
+    assert_eq!(*copied.lock().unwrap(), selected);
+    *copied.lock().unwrap() = String::new();
+    assert_eq!(select_preview_heading(&mut h), selected);
+    h.get_by_label(text::MARKDOWN_PREVIEW).click_secondary();
+    h.run();
+    h.get_by_label(text::COPY_SELECTED_MARKDOWN).click();
+    h.run();
+    assert_eq!(*copied.lock().unwrap(), selected);
+    assert_eq!(h.state().document.active().unwrap().text(), original);
+    assert!(h.query_by_label(text::MARKDOWN_SOURCE).is_none());
+}
+
+#[test]
+fn backspace_at_start_of_neighbor_continues_into_markdown_and_can_undo() {
+    let mut h = harness();
+    let w = h.state().document.active().unwrap();
+    let original = w.text();
+    let id = markdown::source_id(w.regions[1].id);
+    let mut value = w.regions[1].text.clone();
+    commands::apply(&h.ctx, id, &mut value, &TextCommand::SelectBytes(0..0));
+    h.ctx.memory_mut(|m| m.request_focus(id));
+    h.run();
+    let boundary = h.state().document.active().unwrap().regions[0].text.len();
+    h.key_press(Key::Backspace);
+    h.run();
+    let mut expected = original.clone();
+    expected.remove(boundary - 1);
+    assert_eq!(h.state().document.active().unwrap().text(), expected);
+    assert!(h.query_by_label(text::DOCUMENT_EDITOR).is_some());
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run();
+    assert_eq!(h.state().document.active().unwrap().text(), original);
+}
+
+#[test]
+fn delete_at_markdown_source_end_continues_into_next_text() {
+    let mut h = harness();
+    edit(&mut h);
+    let w = h.state().document.active().unwrap();
+    let original = w.text();
+    let boundary = w.regions[0].text.len();
+    let id = markdown::source_id(w.regions[0].id);
+    let mut value = w.regions[0].text.clone();
+    commands::apply(
+        &h.ctx,
+        id,
+        &mut value,
+        &TextCommand::SelectBytes(boundary..boundary),
+    );
+    h.ctx.memory_mut(|m| m.request_focus(id));
+    h.run();
+    h.key_press(Key::Delete);
+    h.run();
+    let mut expected = original;
+    expected.remove(boundary);
+    assert_eq!(h.state().document.active().unwrap().text(), expected);
+}
+
+#[test]
+fn deleting_all_markdown_source_leaves_no_preview_block_after_blur() {
+    let mut h = harness();
+    edit(&mut h);
+    let region = &h.state().document.active().unwrap().regions[0];
+    let id = markdown::source_id(region.id);
+    let mut source = region.text.clone();
+    commands::apply(&h.ctx, id, &mut source, &TextCommand::SelectAll);
+    h.key_press(Key::Backspace);
+    h.run();
+    assert!(
+        h.state().document.active().unwrap().regions[0]
+            .text
+            .is_empty()
+    );
+    h.get_by_label(text::REGION_SOURCE).click();
+    h.run();
+    assert!(h.query_by_label(text::MARKDOWN_PREVIEW).is_none());
+    assert!(h.query_by_label(text::MARKDOWN_SOURCE).is_none());
+    assert_eq!(
+        h.state().document.active().unwrap().regions[1].text,
+        "plain note"
+    );
+}
+
+#[test]
+fn empty_spans_of_any_syntax_do_not_create_blank_editors() {
+    let mut h = harness();
+    let w = h.state_mut().document.active_mut().unwrap();
+    w.regions[0].text.clear();
+    w.regions[0].syntax_id = "plain".into();
+    let yaml = w.add_region("区域");
+    w.regions.last_mut().unwrap().syntax_id = "yaml".into();
+    let region = w.regions.pop().unwrap();
+    w.regions.insert(1, region);
+    let empty_markdown = w.add_region("区域");
+    w.regions.last_mut().unwrap().syntax_id = "markdown".into();
+    w.active_region = yaml;
+    let before = w.text();
+    h.run();
+    assert_eq!(h.get_all_by_label(text::REGION_SOURCE).count(), 1);
+    assert!(h.query_by_label(text::MARKDOWN_SOURCE).is_none());
+    let w = h.state().document.active().unwrap();
+    assert_eq!(w.text(), before);
+    assert!(w.regions.iter().any(|r| r.id == empty_markdown));
+}
+
+#[test]
+fn whitespace_markdown_is_visible_as_source_and_can_be_deleted() {
+    let mut h = harness();
+    let w = h.state_mut().document.active_mut().unwrap();
+    w.regions[0].text = "\r\n\n\n\t".into();
+    let original = w.text();
+    h.run();
+    assert_eq!(h.state().document.active().unwrap().text(), original);
+    h.get_by_label(text::MARKDOWN_SOURCE).click();
+    h.run();
+    let w = h.state().document.active().unwrap();
+    let id = markdown::source_id(w.regions[0].id);
+    let mut value = w.regions[0].text.clone();
+    commands::apply(&h.ctx, id, &mut value, &TextCommand::SelectAll);
+    h.key_press(Key::Backspace);
+    h.run();
+    let w = h.state().document.active().unwrap();
+    assert_eq!(w.regions[0].text, "");
+    assert_eq!(w.regions[1].text, "plain note");
 }

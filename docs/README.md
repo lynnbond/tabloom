@@ -43,3 +43,9 @@
 [macOS 系统顶栏菜单](21-native-macos-menu.md)：原生菜单、快捷键事件桥接、安全退出与 AppKit 集成验证。
 
 [Markdown 自动预览](22-markdown-preview.md)：双击源码、失焦渲染、纯文本持久化、整篇源码入口与测试边界。
+
+[Markdown 选择与复制](23-markdown-selection.md)：渲染文字拖选、纯文本复制、菜单选区保持及回归测试。
+
+[Markdown 焦点与跨范围删除](24-markdown-delete.md)：普通内容容器、边界退格/Delete 自动继续、清空及撤销回归。
+
+[空区域布局修复](25-empty-span-layout.md)：隐藏零长度区域，保留可编辑的实际空白字符。

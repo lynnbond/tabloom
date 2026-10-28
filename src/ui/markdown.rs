@@ -14,9 +14,76 @@ use eframe::egui::{self, FontId, Id, Key, Modifiers};
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use uuid::Uuid;
 
+#[derive(Default)]
+struct PreviewSelection {
+    text: String,
+    content: Option<egui::Rect>,
+}
+impl egui::Plugin for PreviewSelection {
+    fn debug_name(&self) -> &'static str {
+        "Markdown preview selection"
+    }
+    fn input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
+        if !egui::Popup::is_any_open(ctx)
+            && input.events.iter().any(|e| {
+                matches!(
+                    e,
+                    egui::Event::PointerButton {
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
+                        pos,
+                        ..
+                    } if self.content.is_some_and(|rect| rect.contains(*pos))
+                ) || matches!(
+                    e,
+                    egui::Event::Text(_)
+                        | egui::Event::Paste(_)
+                        | egui::Event::Cut
+                        | egui::Event::Ime(_)
+                        | egui::Event::Key {
+                            key: Key::Escape | Key::Tab,
+                            pressed: true,
+                            ..
+                        }
+                )
+            })
+        {
+            self.text.clear();
+        }
+    }
+    fn output_hook(&mut self, _: &egui::Context, output: &mut egui::FullOutput) {
+        for command in &output.platform_output.commands {
+            if let egui::OutputCommand::TextSelectionSettled(text) = command {
+                self.text = text.clone();
+            }
+        }
+    }
+}
+pub fn preview_selection(ctx: &egui::Context) -> String {
+    ctx.with_plugin::<PreviewSelection, _>(|s| s.text.clone())
+        .unwrap_or_default()
+}
+
 pub fn source_id(region: Uuid) -> Id {
     Id::unique(("region-source", region))
 }
+/// Continue normal document deletion across presentation-only span boundaries.
+pub fn boundary_delete(ctx: &egui::Context, w: &Workspace) -> Option<std::ops::Range<usize>> {
+    let focused = ctx.memory(|m| m.focused())?;
+    let region = w.regions.iter().find(|r| source_id(r.id) == focused)?;
+    let local = commands::selected_bytes(ctx, focused, &region.text);
+    if !local.is_empty() {
+        return None;
+    }
+    let offset = w.region_offset(region.id)?;
+    let byte = offset + local.start;
+    let crosses = (local.start == 0 && byte > 0 && ctx.input(|i| i.key_pressed(Key::Backspace)))
+        || (local.end == region.text.len()
+            && byte < w.regions.iter().map(|r| r.text.len()).sum::<usize>()
+            && ctx.input(|i| i.key_pressed(Key::Delete)));
+    crosses.then_some(byte..byte)
+}
+
 pub fn has_markdown(w: &Workspace) -> bool {
     w.regions.iter().any(|r| r.syntax_id == "markdown")
 }
@@ -35,6 +102,13 @@ impl MarkdownState {
     pub fn finish_editing(&mut self) {
         self.editing = None;
     }
+    pub fn has_preview_selection(&self, ctx: &egui::Context) -> bool {
+        self.editing.is_none()
+            && (ctx
+                .with_plugin::<egui::text_selection::LabelSelectionState, _>(|s| s.has_selection())
+                .unwrap_or(false)
+                || !preview_selection(ctx).is_empty())
+    }
     pub fn mixed(&self, w: &Workspace) -> bool {
         has_markdown(w) && self.source_workspace != Some(w.id)
     }
@@ -46,6 +120,10 @@ pub fn show(
     view: DocumentView<'_>,
     command: Option<(Id, TextCommand)>,
 ) -> DocumentOutput {
+    ui.ctx().plugin_or_default::<PreviewSelection>();
+    let content = ui.available_rect_before_wrap();
+    ui.ctx()
+        .with_plugin::<PreviewSelection, _>(|s| s.content = Some(content));
     let before = w.text();
     let editing_event = command.is_some()
         || ui.input(|i| {
@@ -79,6 +157,10 @@ pub fn show(
         state.workspace = Some(w.id);
         state.regions = region_ids;
         state.heights.clear();
+        ui.ctx()
+            .with_plugin::<PreviewSelection, _>(|s| s.text.clear());
+        ui.ctx()
+            .with_plugin::<egui::text_selection::LabelSelectionState, _>(|s| s.clear_selection());
         state.cache = CommonMarkCache::default();
         state.highlights = HighlightCache::default();
     }
@@ -92,7 +174,18 @@ pub fn show(
     let mut offset = 0;
     let mut global_selection = None;
     let mut active = w.active_region;
-    let has_content = w.regions.iter().any(|r| !r.text.trim().is_empty());
+    let has_content = w.regions.iter().any(|r| !r.text.is_empty());
+    // A persisted empty span is metadata, not a blank line in the document.
+    // Restore focus to actual content when an old active span has no text.
+    if has_content
+        && view.request_focus
+        && w.regions
+            .iter()
+            .any(|r| r.id == active && r.text.is_empty())
+        && let Some(region) = w.regions.iter().find(|r| !r.text.is_empty())
+    {
+        active = region.id;
+    }
     egui::ScrollArea::both()
         .id_salt(("markdown-document", w.id))
         .auto_shrink([false, false])
@@ -110,12 +203,12 @@ pub fn show(
                             .map(|(_, cmd)| cmd);
                         let editing = state.editing == Some((w.id, region.id));
                         let empty = region.text.trim().is_empty();
-                        // Empty syntax metadata is not document content: don't create a
-                        // selectable preview/placeholder that Backspace cannot remove.
-                        if md
-                            && empty
+                        // Zero-length spans have no document content, irrespective of
+                        // language. Whitespace spans remain editable and deletable.
+                        if region.text.is_empty()
                             && !editing
                             && pending.is_none()
+                            && !ui.memory(|m| m.has_focus(id))
                             && (has_content || active != region.id)
                         {
                             state.heights.remove(&region.id);
@@ -140,7 +233,7 @@ pub fn show(
                         if md && !empty && !editing && !focus && !too_large {
                             let preview = ui
                                 .push_id(region.id, |ui| {
-                                    ui.style_mut().interaction.selectable_labels = false;
+                                    ui.style_mut().interaction.selectable_labels = true;
                                     ui.style_mut().text_styles.insert(
                                         egui::TextStyle::Body,
                                         FontId::proportional(view.font_size),
@@ -153,38 +246,63 @@ pub fn show(
                                 .interact(
                                     preview.rect,
                                     ui.scope_id().with(("markdown-preview", region.id)),
-                                    egui::Sense::click(),
+                                    egui::Sense::hover(),
                                 )
                                 .on_hover_text(text::MARKDOWN_PREVIEW);
                             preview.widget_info(|| {
                                 egui::WidgetInfo::labeled(
-                                    egui::Role::Button,
+                                    egui::Role::GenericContainer,
                                     true,
                                     text::MARKDOWN_PREVIEW,
                                 )
                             });
-                            if preview.clicked() {
+                            let over_preview = ui.rect_contains_pointer(preview.rect)
+                                && !egui::Popup::is_any_open(ui.ctx());
+                            if over_preview && ui.input(|i| i.pointer.primary_clicked()) {
                                 active = region.id;
                             }
-                            if preview.double_clicked() {
+                            if over_preview
+                                && ui.input(|i| {
+                                    i.pointer
+                                        .button_double_clicked(egui::PointerButton::Primary)
+                                })
+                            {
+                                ui.ctx()
+                                    .with_plugin::<egui::text_selection::LabelSelectionState, _>(
+                                        |s| s.clear_selection(),
+                                    );
                                 state.editing = Some((w.id, region.id));
                                 active = region.id;
                                 ui.ctx().request_repaint();
                                 ui.memory_mut(|m| m.request_focus(id));
                             }
-                            preview.context_menu(|ui| {
-                                if ui.button(text::EDIT_MARKDOWN).clicked() {
-                                    state.editing = Some((w.id, region.id));
-                                    active = region.id;
-                                    ui.memory_mut(|m| m.request_focus(id));
-                                    ui.ctx().request_repaint();
-                                    ui.close();
-                                }
-                                if ui.button(text::COPY_MARKDOWN).clicked() {
-                                    ui.ctx().copy_text(value.clone());
-                                    ui.close();
-                                }
-                            });
+                            let secondary =
+                                over_preview && ui.input(|i| i.pointer.secondary_clicked());
+                            egui::Popup::context_menu(&preview)
+                                .open_memory(secondary.then_some(egui::SetOpenCommand::Bool(true)))
+                                .show(|ui| {
+                                    if ui
+                                        .add_enabled(
+                                            state.has_preview_selection(ui.ctx()),
+                                            egui::Button::new(text::COPY_SELECTED_MARKDOWN),
+                                        )
+                                        .clicked()
+                                    {
+                                        ui.ctx().copy_text(preview_selection(ui.ctx()));
+                                        ui.close();
+                                    }
+                                    if ui.button(text::EDIT_MARKDOWN).clicked() {
+                                        state.editing = Some((w.id, region.id));
+                                        active = region.id;
+                                        ui.memory_mut(|m| m.request_focus(id));
+                                        ui.ctx().request_repaint();
+                                        ui.close();
+                                    }
+                                    if ui.button(text::COPY_MARKDOWN).clicked() {
+                                        ui.ctx().copy_text(value.clone());
+                                        ui.close();
+                                    }
+                                });
                         } else {
                             if md && too_large {
                                 ui.weak(text::MARKDOWN_LARGE);

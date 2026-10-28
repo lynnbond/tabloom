@@ -719,6 +719,15 @@ impl TabloomApp {
         });
     }
 
+    fn has_preview_selection(&self, ctx: &egui::Context) -> bool {
+        !self.search.open
+            && self
+                .document
+                .active()
+                .is_some_and(|w| self.cache.markdown.mixed(w))
+            && self.cache.markdown.has_preview_selection(ctx)
+    }
+
     fn input_text(&self, id: Id) -> Option<String> {
         if self.search.open && id == find_replace::query_id() {
             return Some(self.search.query.clone());
@@ -965,10 +974,27 @@ impl TabloomApp {
                 return;
             }
             Action::Edit(command) => {
+                if matches!(command, TextCommand::Copy) && self.has_preview_selection(ctx) {
+                    let selected = crate::ui::markdown::preview_selection(ctx);
+                    if selected.is_empty() {
+                        ctx.input_mut(|i| i.events.push(egui::Event::Copy));
+                    } else {
+                        ctx.copy_text(selected);
+                    }
+                    return;
+                }
+                if matches!(command, TextCommand::Cut | TextCommand::SelectAll)
+                    && self.has_preview_selection(ctx)
+                {
+                    return;
+                }
                 self.queue_command(command);
                 return;
             }
             Action::Paste => {
+                if self.has_preview_selection(ctx) {
+                    return;
+                }
                 match clipboard::read(ctx) {
                     Ok(text) => {
                         self.edit_error = None;
@@ -1444,10 +1470,21 @@ impl TabloomApp {
     }
 
     fn regions(&mut self, ui: &mut egui::Ui) {
-        let command = self.pending_text_command.take();
+        let mut command = self.pending_text_command.take();
         let Some(w) = self.document.active_mut() else {
             return;
         };
+        if self.cache.markdown.mixed(w)
+            && !self.search.open
+            && let Some(range) = crate::ui::markdown::boundary_delete(ui.ctx(), w)
+        {
+            self.cache.markdown.source_workspace = Some(w.id);
+            let id = editor_region::editor_id(w.id);
+            command = Some((id, TextCommand::SelectBytes(range)));
+            self.pending_focus = Some(w.active_region);
+            self.last_text_focus = Some(id);
+            ui.memory_mut(|m| m.request_focus(id));
+        }
         if self.pending_focus.is_some()
             && egui::TextEdit::load_state(ui.ctx(), editor_region::editor_id(w.id)).is_none()
         {
@@ -1865,9 +1902,11 @@ impl TabloomApp {
         #[cfg(target_os = "macos")]
         if self.native_menu.is_some() {
             let can_extract = self.can_extract(&ctx);
-            let editable = self
-                .last_text_focus
-                .is_some_and(|id| self.input_text(id).is_some());
+            let preview_selection = self.has_preview_selection(&ctx);
+            let editable = !preview_selection
+                && self
+                    .last_text_focus
+                    .is_some_and(|id| self.input_text(id).is_some());
             let modal = self.confirm_exit
                 || self.pending_delete.is_some()
                 || self.pending_permanent_delete.is_some();
@@ -1877,6 +1916,7 @@ impl TabloomApp {
                 self.preferences.appearance(),
                 can_extract,
                 editable,
+                preview_selection,
                 modal,
             ) {
                 self.file_notice = Some((true, format!("{}{error}", text::NATIVE_MENU_ERROR)));

@@ -220,6 +220,7 @@ impl NativeMenu {
         appearance: Appearance,
         can_extract: bool,
         editable: bool,
+        preview_selection: bool,
         modal: bool,
     ) -> muda::Result<()> {
         for (id, item) in &self.items {
@@ -227,7 +228,8 @@ impl NativeMenu {
                 id == &MenuId::from("quit")
             } else {
                 match id.as_ref() {
-                    "undo" | "redo" | "cut" | "copy" | "paste" | "all" => editable,
+                    "copy" => editable || preview_selection,
+                    "undo" | "redo" | "cut" | "paste" | "all" => editable,
                     "extract" => can_extract,
                     "close" | "save" | "export" | "delete-span" => document.active().is_some(),
                     _ => true,
